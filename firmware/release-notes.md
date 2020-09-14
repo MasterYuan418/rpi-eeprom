@@ -1,5 +1,87 @@
 # Raspberry Pi4 bootloader EEPROM release notes
 
+USB MSD boot also requires the firmware from Raspberry Pi OS 2020-08-20 or newer.
+https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2711_bootloader_config.md
+
+## 2020-09-07 Promote 2020-09-03 to release to STABLE
+
+## 2020-09-03 Only use green LED for error status in bootloader - BETA
+   * Turn the green LED on and leave it on unless an error code occurs.
+     Previously, SD activity was displayed but that plus muxing with the
+     SPI CS made the LED activity confusing.
+     The HDMI diagnostics screen now provides much better information
+     for determing if the bootloader is running or frozen.
+   * CM4 enable GPIO for SD power.
+   * Filename should be 2020-09-03
+
+## 2020-08-31 Disable self-update from SD card - BETA
+   * Since the ROM will load recovery.bin from the SD card self update is not
+     required. Although it functions correctly there is a small risk stale
+     pieeprom.upd files would be installed automatically e.g. if the
+     rpi-eeprom-update service has been disabled.
+
+## 2020-08-10 Promote 2020-07-31 release to STABLE
+   * The USB port power management change from the last BETA improves
+     compatiblity for devices which during reset with no regressions reported.
+     Make this the latest stable release.
+
+## 2020-07-31 Standardize USB port power control accross board revisions - BETA
+   * Turn off USB port power for 1-second regardless of boot-mode. This appears
+     to resolve an issue on R1.3 and older board revisions where some USB
+     devices would fail upon reboot. On R1.4 USB port power is turned off
+     automatically by the PMIC so this is just held in reset for longer. For
+     earlier board revisions the USB port power is explicitly turned off via
+     XHCI.
+     This can be overriden via USB_MSD_PWR_OFF_TIME in the EEPROM config.
+   * Update to the latest Broadcom memsys FW - no significant functional change.
+
+## 2020-07-20 Promote 2020-07-16 bootloader and VL805 0138A1 FW to stable - STABLE
+   * Promote the latest beta to stable as the next production firmware release
+     candidate.
+     The main difference between this and the previous stable version is
+     the VL805 FW update. 
+
+## 2020-07-16 Update VL805 FW to 0138A1 and add optional EEPROM write-protect - BETA
+   * Patch previous 2020-07-16 from c44ee87f -> 45291ce6 to fix a CM4 specific
+     issue which does not impact Model B
+   * Update the VL805 embedded / standalone FW version to 0138A1
+      *  User settings of the ASPM bits in the PCI configuration space
+         link control register are now maintained
+      * Better full-speed Isochronous endpoint support
+   * Add eeprom_write_protect config.txt variable which if set configures
+     the non-volatile status register bits to define the write protect
+     regions.
+      * If 1 then configure the write protect regions for both the
+        bootloader and VLI EEPROMs to cover the entire EEPROM.
+      * If zero then clear all write protect bits.
+      * If missing or -1 then don't change the current state.
+   * The write protect is only effective if the /WP pin is pulled low
+     e.g. by shorting TP5 to ground.
+   * WARNING: Previous versions of the bootloader, recovery.bin and vl805
+     tool do NOT clear the non-volatile status bits for the VL805 SPI EEPROM.
+     Consequently, installing an older version will fail/hang if the write
+     protect bits have not been cleared first (eeprom_write_protect=0)
+   * Update the vl805 user-space tool to clear the WP bits.
+   * Add recovery_wait config.txt option which if set to 1 forces the EEPROM
+     rescue image and flashes the activity LED forever. This is intended for
+     use with an SD card image which just contains recovery.bin + config.txt
+     and is used to set/clear WP on multiple boards.
+   * The write protect functionality works with self-update mode, however,
+     the bootloader must have already been updated to the version supporting
+     write protect first i.e. at least two reboots are required.
+   * Update the HDMI diagnostics screen to display 'RO' after the EEPROM version
+     if the write status register for the bootloader SPI EEPROM has write protect
+     bits defined. This does NOT attempt to verify if /WP is low.
+
+## 2020-07-06 Tweak USB port power and clear ACT LED after SPI - BETA
+   * Increase port power off limit to 5 seconds.
+   * Increase the port power off default to 1 second. This seems to cover most
+     commonly seen USB MSD devices which require the USB port power to be disabled
+     after the USB HC chip is reset.
+   * Reset activity LED after SPI access to reduce the number of spurious LED flashes.
+   * Add SPI error diagnostic error code (3 long 1 short) if SPI commands timeout.
+     (So far this failure has not been observed on failed boards)
+
 ## 2020-06-17 Promote 2020-06-15 to STABLE
    * Promote the latest beta EEPROM and recovery.bin to stable and
      feature freeze USB MSD support until a production release is ready.

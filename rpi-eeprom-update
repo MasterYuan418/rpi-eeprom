@@ -32,6 +32,7 @@ USE_FLASHROM=${USE_FLASHROM:-0}
 RECOVERY_BIN=${RECOVERY_BIN:-${FIRMWARE_ROOT}/${FIRMWARE_RELEASE_STATUS}/recovery.bin}
 BOOTFS=${BOOTFS:-/boot}
 VCMAILBOX=${VCMAILBOX:-/opt/vc/bin/vcmailbox}
+CM4_ENABLE_RPI_EEPROM_UPDATE=${CM4_ENABLE_RPI_EEPROM_UPDATE:-0}
 
 EXIT_SUCCESS=0
 EXIT_UPDATE_REQUIRED=1
@@ -163,12 +164,18 @@ applyRecoveryUpdate()
 
         cp -f "${TMP_EEPROM_IMAGE}" "${BOOTFS}/pieeprom.upd" \
                 || die "Failed to copy ${TMP_EEPROM_IMAGE} to ${BOOTFS}"
+
+        # For NFS mounts ensure that the files are readable to the TFTP user
+        chmod -f go+r "${BOOTFS}/pieeprom.upd" "${BOOTFS}/pieeprom.sig"
    fi
 
    if [ -n "${VL805_UPDATE_IMAGE}" ]; then
         sha256sum "${VL805_UPDATE_IMAGE}" | awk '{print $1}' > "${BOOTFS}/vl805.sig" \
                 || die "Failed to create ${BOOTFS}/vl805.sig"
         cp -f "${VL805_UPDATE_IMAGE}" "${BOOTFS}/vl805.bin"
+
+        # For NFS mounts ensure that the files are readable to the TFTP user
+        chmod -f go+r "${BOOTFS}/vl805.bin" "${BOOTFS}/vl805.sig"
    fi
 
    cp -f "${RECOVERY_BIN}" "${BOOTFS}/recovery.bin" \
@@ -261,7 +268,7 @@ getBootloaderUpdateVersion() {
 }
 
 checkDependencies() {
-   BOARD_INFO="$(sed -n '/^Revision/s/^.*: \(.*\)/\1/p' < /proc/cpuinfo)"
+   BOARD_INFO="$(od -v -An -t x1 /sys/firmware/devicetree/base/system/linux,revision | tr -d ' \n')"
    if [ $(((0x$BOARD_INFO >> 23) & 1)) -ne 0 ] && [ $(((0x$BOARD_INFO >> 12) & 15)) -eq 3 ]; then
       echo "BCM2711 detected"
    else
@@ -271,6 +278,12 @@ checkDependencies() {
 
    BOARD_TYPE=$(((0x$BOARD_INFO >> 4) & 0xff))
    BOARD_REVISION=$((0x$BOARD_INFO & 0xf))
+
+   if [ ${BOARD_TYPE} -eq 20 ] && [ ${CM4_ENABLE_RPI_EEPROM_UPDATE} != '1' ]; then
+      # For CM4, USB device boot is the recommended method for EEPROM updates.
+      echo "rpi-eeprom-update is not enabled by default on CM4"
+      exit ${EXIT_SUCCESS}
+   fi
 
    if [ ${BOARD_TYPE} -eq 17 ] && [ ${BOARD_REVISION} -lt 4 ]; then
       echo "Dedicated VL805 EEPROM detected"
@@ -441,7 +454,7 @@ EOF
 printVersions()
 {
    if [ "${ACTION_UPDATE_BOOTLOADER}" = 1 ]; then
-      echo "BOOTLOADER: update required"
+      echo "BOOTLOADER: update available"
    else
       echo "BOOTLOADER: up-to-date"
    fi
@@ -451,7 +464,7 @@ printVersions()
    echo " FW DIR: ${FIRMWARE_IMAGE_DIR}"
 
    if [ "${ACTION_UPDATE_VL805}" = 1 ]; then
-      echo "VL805: update required"
+      echo "VL805: update available"
    else
       if [ "$(id -u)" = "0" ]; then
          echo "VL805: up-to-date"
@@ -614,7 +627,7 @@ checkVersion()
    lookupVersionInfo
 
    if [ "${BOOTLOADER_UPDATE_VERSION}" -gt "${BOOTLOADER_CURRENT_VERSION}" ]; then
-      echo "*** UPDATE REQUIRED ***"
+      echo "*** UPDATE AVAILABLE ***"
       printVersions
       write_status_info "EXIT_UPDATE_REQUIRED"
       exit ${EXIT_UPDATE_REQUIRED}
